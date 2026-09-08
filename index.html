@@ -5,25 +5,111 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>デジタル整理券</title>
   <style>
-    body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f4f9; }
-    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; margin: 0 auto; }
-    .number { font-size: 48px; font-weight: bold; color: #07c160; margin: 10px 0; }
-    button { background: #07c160; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 6px; cursor: pointer; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; }
+    .card { background: #1e293b; padding: 24px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); margin-top: 20px; }
+    h1 { font-size: 20px; color: #94a3b8; margin-bottom: 10px; }
+    .number { font-size: 64px; font-weight: bold; color: #38bdf8; margin: 15px 0; }
+    .status-box { background: #0f172a; padding: 15px; border-radius: 10px; margin: 15px 0; }
+    .btn { background: #22c55e; color: white; border: none; padding: 16px 32px; font-size: 18px; font-weight: bold; border-radius: 12px; cursor: pointer; width: 100%; box-shadow: 0 4px 12px rgba(34,197,94,0.3); }
+    .btn:disabled { background: #64748b; cursor: not-allowed; box-shadow: none; }
+    .line-input { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; box-sizing: border-box; }
+    .info-text { font-size: 12px; color: #94a3b8; margin-top: 8px; }
   </style>
 </head>
 <body>
+
   <div class="card">
-    <h2>順番待ち整理券</h2>
-    <p>現在の受付番号</p>
-    <div class="number" id="ticketNo">--</div>
-    <button onclick="issueTicket()">整理券を発行する</button>
+    <h1 id="shopName">読み込み中...</h1>
+    
+    <div class="status-box">
+      <div>現在の呼び出し番号</div>
+      <div id="currentNo" class="number" style="font-size: 48px; color: #f59e0b;">-</div>
+    </div>
+
+    <div id="ticketArea">
+      <p>整理券を発行して順番をお待ちください。</p>
+      <input type="text" id="lineUserId" class="line-input" placeholder="LINE User ID（任意: 通知用）">
+      <p class="info-text">※LINE IDを入力すると、順番が近くなった際に通知が届きます。</p>
+      <br>
+      <button id="issueBtn" class="btn" onclick="issueTicket()">整理券を発行する</button>
+    </div>
+
+    <div id="myTicketArea" style="display: none; margin-top: 20px; border-top: 1px solid #334155; padding-top: 20px;">
+      <p>あなたの受付番号</p>
+      <div id="myNo" class="number">-</div>
+      <p id="waitCount" style="color: #38bdf8; font-weight: bold;">あと - 組でお呼び出しです</p>
+    </div>
   </div>
 
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
   <script>
-    function issueTicket() {
-      const randomNum = Math.floor(Math.random() * 90) + 10;
-      document.getElementById('ticketNo').innerText = randomNum;
-      alert(`整理券番号 ${randomNum} 番を発行しました！`);
+    const firebaseConfig = {
+      apiKey: "AIzaSyAtML5QTMDkhUZfb9MZoAt4Nt0ue2SNd7E",
+      authDomain: "qr-customer-call.firebaseapp.com",
+      projectId: "qr-customer-call",
+      storageBucket: "qr-customer-call.firebasestorage.app",
+      messagingSenderId: "809125472107",
+      appId: "1:809125472107:web:f25fd8367ab69728bc8e2e",
+      measurementId: "G-VT8ZHEXYMX"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const shopId = urlParams.get('shop') || 'shop1';
+    let myNumber = null;
+
+    const shopRef = db.collection('queueShops').doc(shopId);
+
+    shopRef.onSnapshot((doc) => {
+      if (!doc.exists) {
+        document.getElementById('shopName').innerText = "店舗情報が見つかりません";
+        return;
+      }
+      const data = doc.data();
+      document.getElementById('shopName').innerText = data.name || "店舗1";
+      document.getElementById('currentNo').innerText = data.current + " 番";
+
+      if (myNumber !== null) {
+        const wait = myNumber - data.current;
+        if (wait > 0) {
+          document.getElementById('waitCount').innerText = `あと ${wait} 組でお呼び出しです`;
+        } else if (wait === 0) {
+          document.getElementById('waitCount').innerText = "🎉 お呼び出し中！窓口へお越しください";
+        } else {
+          document.getElementById('waitCount').innerText = "ご案内が完了しました";
+        }
+      }
+    });
+
+    async function issueTicket() {
+      document.getElementById('issueBtn').disabled = true;
+      const lineId = document.getElementById('lineUserId').value.trim();
+
+      await db.runTransaction(async (transaction) => {
+        const sfDoc = await transaction.get(shopRef);
+        if (!sfDoc.exists) {
+          transaction.set(shopRef, { name: '店舗1', current: 0, max: 1, skips: [] });
+          myNumber = 1;
+        } else {
+          const newMax = (sfDoc.data().max || 0) + 1;
+          transaction.update(shopRef, { max: newMax });
+          myNumber = newMax;
+        }
+
+        if (lineId) {
+          const ticketRef = shopRef.collection('tickets').doc(String(myNumber));
+          transaction.set(ticketRef, { lineUserId: lineId, createdAt: new Date() });
+        }
+      });
+
+      document.getElementById('ticketArea').style.display = 'none';
+      document.getElementById('myTicketArea').style.display = 'block';
+      document.getElementById('myNo').innerText = myNumber + " 番";
     }
   </script>
 </body>
