@@ -123,15 +123,15 @@
 
   <script>
     // ▼ 作成したFirebaseプロジェクトの設定情報を指定してください
-  const firebaseConfig = {
-  apiKey: "AIzaSyAtML5QTMDkhUZfb9MZoAt4Nt0ue2SNd7E",
-  authDomain: "qr-customer-call.firebaseapp.com",
-  projectId: "qr-customer-call",
-  storageBucket: "qr-customer-call.firebasestorage.app",
-  messagingSenderId: "809125472107",
-  appId: "1:809125472107:web:f25fd8367ab69728bc8e2e",
-  measurementId: "G-VT8ZHEXYMX"
-};
+    const firebaseConfig = {
+      apiKey: "AIzaSyAtML5QTMDkhUZfb9MZoAt4Nt0ue2SNd7E",
+      authDomain: "qr-customer-call.firebaseapp.com",
+      projectId: "qr-customer-call",
+      storageBucket: "qr-customer-call.firebasestorage.app",
+      messagingSenderId: "809125472107",
+      appId: "1:809125472107:web:f25fd8367ab69728bc8e2e",
+      measurementId: "G-VT8ZHEXYMX"
+    };
 
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
@@ -162,8 +162,6 @@
 
     // LINE通知送信関数
     async function sendLineNotification(ticketNumber) {
-      const select = document.getElementById('shopSelect');
-      const shopName = select.options[select.selectedIndex].text;
       const lineUserId = document.getElementById('lineUserId').value.trim();
 
       if (!lineUserId) {
@@ -175,7 +173,10 @@
         const res = await fetch('/api/notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ shopName, ticketNumber, lineUserId })
+          body: JSON.stringify({
+            userId: lineUserId,
+            number: ticketNumber
+          })
         });
 
         if (res.ok) {
