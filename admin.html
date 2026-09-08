@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>【管理用】順番呼び出しパネル</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background: #0f172a; color: #f8fafc; }
+    .card { background: #1e293b; padding: 25px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); text-align: center; }
+    h1 { font-size: 18px; color: #94a3b8; margin-bottom: 15px; }
+    
+    .shop-select { width: 100%; padding: 12px; font-size: 16px; border-radius: 10px; border: 1px solid #334155; background: #0f172a; color: #fff; margin-bottom: 15px; }
+    .input-line-id { width: 100%; padding: 10px; font-size: 14px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; box-sizing: border-box; margin-bottom: 20px; }
+
+    .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+    .status-card { background: #0f172a; padding: 15px; border-radius: 12px; }
+    .status-title { font-size: 12px; color: #64748b; font-weight: bold; }
+    .status-num { font-size: 36px; font-weight: bold; color: #38bdf8; margin-top: 5px; }
+
+    /* 操作ボタンエリア */
+    .btn-next { background: #22c55e; color: white; border: none; padding: 18px; font-size: 20px; font-weight: bold; border-radius: 14px; cursor: pointer; width: 100%; box-shadow: 0 4px 15px rgba(34,197,94,0.3); margin-bottom: 12px; }
+    .btn-skip { background: #f59e0b; color: white; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 12px; cursor: pointer; width: 100%; margin-bottom: 20px; }
+    .btn-qr { background: #3b82f6; color: white; border: none; padding: 12px; font-size: 14px; font-weight: bold; border-radius: 10px; cursor: pointer; width: 100%; margin-bottom: 15px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .btn-next:active, .btn-skip:active, .btn-qr:active { transform: scale(0.98); }
+
+    /* スキップリスト表示エリア */
+    .skipped-box { background: #0f172a; padding: 15px; border-radius: 12px; text-align: left; margin-bottom: 20px; border: 1px dashed #334155; }
+    .skipped-title { font-size: 13px; color: #f59e0b; font-weight: bold; margin-bottom: 10px; display: flex; justify-content: space-between; }
+    .skipped-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+    .skip-tag { background: #f59e0b22; color: #fbbf24; border: 1px solid #f59e0b; padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 6px; }
+    .skip-tag button { background: #ef4444; color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+    /* QRコードモーダル画面 */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; z-index: 1000; }
+    .modal-content { background: #fff; color: #1e293b; padding: 30px; border-radius: 20px; text-align: center; max-width: 360px; width: 90%; }
+    .qr-container { background: #fff; padding: 15px; display: inline-block; border-radius: 12px; margin: 15px 0; border: 1px solid #e2e8f0; }
+    .btn-print { background: #0f172a; color: white; border: none; padding: 12px 24px; font-weight: bold; border-radius: 8px; cursor: pointer; margin-right: 8px; }
+    .btn-close { background: #94a3b8; color: white; border: none; padding: 12px 20px; font-weight: bold; border-radius: 8px; cursor: pointer; }
+
+    .btn-reset { background: #ef4444; color: white; border: none; padding: 10px; font-size: 12px; border-radius: 8px; cursor: pointer; opacity: 0.6; }
+    .status-msg { margin-top: 15px; font-size: 13px; color: #f59e0b; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #printArea, #printArea * { visibility: visible; }
+      #printArea { position: absolute; left: 0; top: 0; width: 100%; text-align: center; color: #000; background: #fff; padding: 40px 0; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>🛠️ 店舗運営・呼び出しパネル</h1>
+
+    <select class="shop-select" id="shopSelect" onchange="switchShop()">
+      <option value="shop1">店舗1</option>
+      <option value="shop2">店舗2</option>
+      <option value="shop3">店舗3</option>
+    </select>
+
+    <!-- 個別呼び出し用 LINE User ID 入力欄 -->
+    <input type="text" class="input-line-id" id="lineUserId" placeholder="通知先 LINE User ID (任意)">
+
+    <button class="btn-qr" onclick="openQRModal()">📱 店舗用QRコードを表示・印刷</button>
+
+    <div class="status-grid">
+      <div class="status-card">
+        <div class="status-title">現在呼び出し中</div>
+        <div class="status-num" id="currentNum">0</div>
+      </div>
+      <div class="status-card">
+        <div class="status-title">本日発行数</div>
+        <div class="status-num" id="maxNum" style="color: #a855f7;">0</div>
+      </div>
+    </div>
+
+    <!-- メイン操作ボタン -->
+    <button class="btn-next" onclick="nextCustomer()">📢 次の方を呼び出す（LINE通知）</button>
+    <button class="btn-skip" onclick="skipCustomer()">⚠️ 不在のためスキップ（保留）</button>
+
+    <!-- スキップ（不在）リスト -->
+    <div class="skipped-box">
+      <div class="skipped-title">
+        <span>📋 不在・スキップ中の番号</span>
+        <span style="font-size: 11px; color: #64748b;">（戻られたら削除）</span>
+      </div>
+      <div class="skipped-tags" id="skipList">
+        <span style="font-size: 12px; color: #64748b;">なし</span>
+      </div>
+    </div>
+
+    <div id="statusMsg" class="status-msg"></div>
+
+    <div style="margin-top: 25px; text-align: right;">
+      <button class="btn-reset" onclick="resetQueue()">🔄 本日の番号リセット</button>
+    </div>
+  </div>
+
+  <!-- モーダル・印刷エリア -->
+  <div class="modal" id="qrModal">
+    <div class="modal-content" id="printArea">
+      <h2 style="font-size: 22px; margin-bottom: 5px;" id="modalShopName">順番待ち受付</h2>
+      <p style="font-size: 13px; color: #64748b; margin-top: 0;">スマホでQRコードを読み取って<br>整理券を発行してください</p>
+      
+      <div class="qr-container">
+        <div id="qrcode"></div>
+      </div>
+
+      <div style="font-size: 11px; color: #94a3b8; word-break: break-all; margin-bottom: 15px;" id="targetUrl"></div>
+
+      <div class="no-print">
+        <button class="btn-print" onclick="window.print()">🖨️ 印刷する</button>
+        <button class="btn-close" onclick="closeQRModal()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase & QR Code SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <script>
+    // ▼ 作成したFirebaseプロジェクトの設定情報を指定してください
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let currentShopId = 'shop1';
+    let unsubscribe = null;
+
+    function switchShop() {
+      currentShopId = document.getElementById('shopSelect').value;
+      if (unsubscribe) unsubscribe();
+
+      const ref = db.collection('queueShops').doc(currentShopId);
+      unsubscribe = ref.onSnapshot(doc => {
+        if (!doc.exists) {
+          ref.set({ name: '店舗', current: 0, max: 0, skips: [] });
+          return;
+        }
+        const data = doc.data();
+        document.getElementById('currentNum').innerText = `${data.current || 0} 番`;
+        document.getElementById('maxNum').innerText = `${data.max || 0} 番`;
+        renderSkips(data.skips || []);
+        showMsg("");
+      }, error => {
+        console.error("Firestore Error:", error);
+        showMsg("❌ データベース接続エラーです。");
+      });
+    }
+
+    // LINE通知送信関数
+    async function sendLineNotification(ticketNumber) {
+      const select = document.getElementById('shopSelect');
+      const shopName = select.options[select.selectedIndex].text;
+      const lineUserId = document.getElementById('lineUserId').value.trim();
+
+      if (!lineUserId) {
+        showMsg(`📢 番号 ${ticketNumber} を呼び出しました（LINE ID未入力のため通知なし）`);
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ shopName, ticketNumber, lineUserId })
+        });
+
+        if (res.ok) {
+          showMsg(`✅ 番号 ${ticketNumber} 番へLINE通知を送信しました！`);
+        } else {
+          const errData = await res.json();
+          showMsg(`⚠️ LINE送信失敗: ${JSON.stringify(errData)}`);
+        }
+      } catch (err) {
+        showMsg('❌ 通信エラーでLINE通知が送信できませんでした');
+      }
+    }
+
+    // 次のお客さんを呼び出す（呼び出し＋LINE通知）
+    function nextCustomer() {
+      const ref = db.collection('queueShops').doc(currentShopId);
+      db.runTransaction(transaction => {
+        return transaction.get(ref).then(doc => {
+          if (!doc.exists) return;
+          const current = doc.data().current || 0;
+          const max = doc.data().max || 0;
+          if (current < max) {
+            const nextNum = current + 1;
+            transaction.update(ref, { current: nextNum });
+            return nextNum;
+          } else {
+            showMsg("⚠️ 待っているお客さまはいません。");
+            return null;
+          }
+        });
+      }).then(nextNum => {
+        if (nextNum) {
+          sendLineNotification(nextNum);
+        }
+      });
+    }
+
+    // スキップ処理
+    function skipCustomer() {
+      const ref = db.collection('queueShops').doc(currentShopId);
+      db.runTransaction(transaction => {
+        return transaction.get(ref).then(doc => {
+          if (!doc.exists) return;
+          const current = doc.data().current || 0;
+          const max = doc.data().max || 0;
+          let skips = doc.data().skips || [];
+
+          if (current === 0) {
+            showMsg("⚠️ まだ誰も呼び出されていません。");
+            return;
+          }
+
+          if (!skips.includes(current)) skips.push(current);
+
+          const nextNum = current < max ? current + 1 : current;
+          transaction.update(ref, { skips: skips, current: nextNum });
+        });
+      }).then(() => showMsg("番号をスキップリストへ移動しました"));
+    }
+
+    // スキップ解除
+    function removeSkip(num) {
+      const ref = db.collection('queueShops').doc(currentShopId);
+      db.runTransaction(transaction => {
+        return transaction.get(ref).then(doc => {
+          if (!doc.exists) return;
+          let skips = doc.data().skips || [];
+          skips = skips.filter(n => n !== num);
+          transaction.update(ref, { skips: skips });
+        });
+      });
+    }
+
+    // QRコード表示用モーダルの開閉と生成
+    function openQRModal() {
+      const select = document.getElementById('shopSelect');
+      const shopName = select.options[select.selectedIndex].text;
+      
+      const baseUrl = window.location.href.split('admin.html')[0];
+      const targetUrl = `${baseUrl}index.html?shop=${currentShopId}`;
+
+      document.getElementById('modalShopName').innerText = `${shopName} 順番待ち受付`;
+      document.getElementById('targetUrl').innerText = targetUrl;
+
+      document.getElementById('qrcode').innerHTML = "";
+      new QRCode(document.getElementById('qrcode'), {
+        text: targetUrl,
+        width: 180,
+        height: 180
+      });
+
+      document.getElementById('qrModal').style.display = 'flex';
+    }
+
+    function closeQRModal() {
+      document.getElementById('qrModal').style.display = 'none';
+    }
+
+    function renderSkips(skips) {
+      const container = document.getElementById('skipList');
+      if (skips.length === 0) {
+        container.innerHTML = '<span style="font-size: 12px; color: #64748b;">なし</span>';
+        return;
+      }
+      container.innerHTML = skips.map(num => `
+        <div class="skip-tag">
+          ${num} 番
+          <button onclick="removeSkip(${num})">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function resetQueue() {
+      if (confirm('本日のデータをリセット（0番に戻す）しますか？')) {
+        db.collection('queueShops').doc(currentShopId).set({ name: '店舗', current: 0, max: 0, skips: [] });
+      }
+    }
+
+    function showMsg(text) {
+      document.getElementById('statusMsg').innerText = text;
+    }
+
+    switchShop();
+  </script>
+</body>
+</html>
