@@ -13,7 +13,7 @@
     .btn-issue:disabled { background: #64748b; box-shadow: none; cursor: not-allowed; }
     .ticket-box { background: #0f172a; border: 2px dashed #38bdf8; padding: 20px; border-radius: 14px; margin-top: 20px; }
     .ticket-num { font-size: 48px; font-weight: bold; color: #38bdf8; }
-    .status-msg { margin-top: 15px; font-size: 14px; color: #f59e0b; }
+    .status-msg { margin-top: 15px; font-size: 13px; color: #f59e0b; word-break: break-all; }
   </style>
 </head>
 <body>
@@ -40,7 +40,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
   <script>
-    // ▼ Firebase設定（admin.htmlと同じ設定情報）
+    // Firebase設定
     const firebaseConfig = {
       apiKey: "AIzaSyAtML5QTMDkhUZfb9MZoAt4Nt0ue2SNd7E",
       authDomain: "qr-customer-call.firebaseapp.com",
@@ -54,53 +54,48 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
 
-    // URLから店舗IDを取得（デフォルト: shop1）
     const urlParams = new URLSearchParams(window.location.search);
     const shopId = urlParams.get('shop') || 'shop1';
 
     let lineUserId = "";
 
-    // ▼ LIFFの初期化（無限ループ防止ロジック）
     window.onload = function() {
-      // LIFF ID（※ご自身のLIFF IDを設定してください）
-      liff.init({ liffId: "YOUR_LIFF_ID" })
+      // ⚠️ ここをご自身の LIFF ID（例: "2001234567-xxxxxx"）に変更してください！
+      const MY_LIFF_ID = "YOUR_LIFF_ID"; 
+
+      liff.init({ liffId: MY_LIFF_ID })
         .then(() => {
-          if (liff.isInClient()) {
-            // LINE内ブラウザの場合は自動ログイン処理
-            if (liff.isLoggedIn()) {
-              getProfileAndEnableBtn();
-            } else {
-              liff.login({ redirectUri: window.location.href });
-            }
+          if (!liff.isLoggedIn()) {
+            // 未ログインの場合は、現在のURL（?shop=shop1 を保持）を保持してログイン
+            liff.login({ redirectUri: window.location.href });
           } else {
-            // 外部ブラウザ（PCやChrome等）でのアクセス
-            if (liff.isLoggedIn()) {
-              getProfileAndEnableBtn();
-            } else {
-              // 外部ブラウザの場合はログインを強制せずそのまま使える状態にする
-              document.getElementById('issueBtn').innerText = "整理券を発行する";
-              document.getElementById('issueBtn').disabled = false;
-            }
+            // ログイン済みならプロフィールから User ID を取得
+            liff.getProfile().then(profile => {
+              lineUserId = profile.userId;
+              showStatus(`✅ LINE連携完了: ${lineUserId.slice(0, 8)}...`);
+              enableButton();
+            }).catch(err => {
+              console.error("Profile Error:", err);
+              showStatus("⚠️ プロフィール取得失敗");
+              enableButton();
+            });
           }
         })
         .catch(err => {
           console.error("LIFF Init Error:", err);
-          // LIFFエラー時もボタンは押せるように救済
-          document.getElementById('issueBtn').innerText = "整理券を発行する";
-          document.getElementById('issueBtn').disabled = false;
+          showStatus("⚠️ LIFF初期化エラー（LIFF IDを確認してください）");
+          enableButton();
         });
     };
 
-    async function getProfileAndEnableBtn() {
-      try {
-        const profile = await liff.getProfile();
-        lineUserId = profile.userId;
-      } catch (err) {
-        console.error("Profile Error:", err);
-      } finally {
-        document.getElementById('issueBtn').innerText = "整理券を発行する";
-        document.getElementById('issueBtn').disabled = false;
-      }
+    function enableButton() {
+      const btn = document.getElementById('issueBtn');
+      btn.innerText = "整理券を発行する";
+      btn.disabled = false;
+    }
+
+    function showStatus(msg) {
+      document.getElementById('statusMsg').innerText = msg;
     }
 
     // 発券処理
@@ -123,26 +118,22 @@
             transaction.set(ref, { name: '店舗', current: 0, max: 1, skips: [] });
           }
 
-          // 画面に発券番号を表示
           document.getElementById('myNumber').innerText = `${newMax} 番`;
           document.getElementById('issueSection').style.display = 'none';
           document.getElementById('ticketSection').style.display = 'block';
 
-          // もしLINE User IDが取れていれば表示（デバッグ用）
           if (lineUserId) {
-            document.getElementById('statusMsg').innerText = `LINE連携完了 (ID: ${lineUserId.slice(0, 8)}...)`;
+            showStatus(`✅ 発券完了（LINE ID: ${lineUserId.slice(0, 8)}...）`);
           } else {
-            document.getElementById('statusMsg').innerText = "⚠️ LINE未連携（通知が届かない場合があります）";
+            showStatus("⚠️ LINE未連携のまま発券されました");
           }
         });
       } catch (err) {
         console.error("Issue Error:", err);
-        document.getElementById('statusMsg').innerText = "❌ 発券に失敗しました。再読み込みしてください。";
-        btn.disabled = false;
-        btn.innerText = "整理券を発行する";
+        showStatus("❌ 発券エラー。再読み込みしてください。");
+        enableButton();
       }
     }
   </script>
 </body>
-</html>
 </html>
