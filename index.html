@@ -12,9 +12,10 @@
     .status-box { background: #0f172a; padding: 15px; border-radius: 10px; margin: 15px 0; }
     .btn { background: #22c55e; color: white; border: none; padding: 16px 32px; font-size: 18px; font-weight: bold; border-radius: 12px; cursor: pointer; width: 100%; box-shadow: 0 4px 12px rgba(34,197,94,0.3); }
     .btn:disabled { background: #64748b; cursor: not-allowed; box-shadow: none; }
-    .line-input { width: 100%; padding: 12px; margin-top: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; box-sizing: border-box; }
-    .info-text { font-size: 12px; color: #94a3b8; margin-top: 8px; }
+    .user-info { font-size: 14px; color: #38bdf8; margin-top: 10px; }
   </style>
+  <!-- LINE LIFF SDK -->
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
 <body>
 
@@ -28,10 +29,9 @@
 
     <div id="ticketArea">
       <p>整理券を発行して順番をお待ちください。</p>
-      <input type="text" id="lineUserId" class="line-input" placeholder="LINE User ID（任意: 通知用）">
-      <p class="info-text">※LINE IDを入力すると、順番が近くなった際に通知が届きます。</p>
+      <div id="userInfo" class="user-info">LINEアカウント読み込み中...</div>
       <br>
-      <button id="issueBtn" class="btn" onclick="issueTicket()">整理券を発行する</button>
+      <button id="issueBtn" class="btn" onclick="issueTicket()" disabled>読み込み中...</button>
     </div>
 
     <div id="myTicketArea" style="display: none; margin-top: 20px; border-top: 1px solid #334155; padding-top: 20px;">
@@ -46,6 +46,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
   <script>
+    const LIFF_ID = "2011502822-9gjbFKnE";
+
     const firebaseConfig = {
       apiKey: "AIzaSyAtML5QTMDkhUZfb9MZoAt4Nt0ue2SNd7E",
       authDomain: "qr-customer-call.firebaseapp.com",
@@ -62,8 +64,29 @@
     const urlParams = new URLSearchParams(window.location.search);
     const shopId = urlParams.get('shop') || 'shop1';
     let myNumber = null;
+    let lineUserId = null;
 
     const shopRef = db.collection('queueShops').doc(shopId);
+
+    async function initLiff() {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (liff.isLoggedIn()) {
+          const profile = await liff.getProfile();
+          lineUserId = profile.userId;
+          document.getElementById('userInfo').innerText = `👤 ${profile.displayName} 様として発券`;
+          document.getElementById('issueBtn').disabled = false;
+          document.getElementById('issueBtn').innerText = "整理券を発行する";
+        } else {
+          liff.login();
+        }
+      } catch (err) {
+        console.error("LIFF Error", err);
+        document.getElementById('userInfo').innerText = "※LINE非連携モード";
+        document.getElementById('issueBtn').disabled = false;
+        document.getElementById('issueBtn').innerText = "整理券を発行する";
+      }
+    }
 
     shopRef.onSnapshot((doc) => {
       if (!doc.exists) {
@@ -88,7 +111,6 @@
 
     async function issueTicket() {
       document.getElementById('issueBtn').disabled = true;
-      const lineId = document.getElementById('lineUserId').value.trim();
 
       await db.runTransaction(async (transaction) => {
         const sfDoc = await transaction.get(shopRef);
@@ -101,9 +123,9 @@
           myNumber = newMax;
         }
 
-        if (lineId) {
+        if (lineUserId) {
           const ticketRef = shopRef.collection('tickets').doc(String(myNumber));
-          transaction.set(ticketRef, { lineUserId: lineId, createdAt: new Date() });
+          transaction.set(ticketRef, { lineUserId: lineUserId, createdAt: new Date() });
         }
       });
 
@@ -111,6 +133,8 @@
       document.getElementById('myTicketArea').style.display = 'block';
       document.getElementById('myNo').innerText = myNumber + " 番";
     }
+
+    initLiff();
   </script>
 </body>
 </html>
