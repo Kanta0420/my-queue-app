@@ -60,7 +60,7 @@
     </select>
 
     <!-- 個別呼び出し用 LINE User ID 入力欄 -->
-    <input type="text" class="input-line-id" id="lineUserId" placeholder="通知先 LINE User ID (任意)">
+    <input type="text" class="input-line-id" id="lineUserId" placeholder="通知先 LINE User ID (自動入力されます)">
 
     <button class="btn-qr" onclick="openQRModal()">📱 店舗用QRコードを表示・印刷</button>
 
@@ -122,14 +122,15 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
   <script>
-    // ▼ 作成したFirebaseプロジェクトの設定情報を指定してください
+    // 💡 実際の Firebase 設定情報をセット済み
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_PROJECT_ID.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyAtWL5QTMOKHUZfb9MZoAt4NtBue2SNd7E",
+      authDomain: "qr-customer-call.firebaseapp.com",
+      projectId: "qr-customer-call",
+      storageBucket: "qr-customer-call.firebasestorage.app",
+      messagingSenderId: "809125472107",
+      appId: "1:809125472107:web:f25fd8367ab69728bc8a7e",
+      measurementId: "G-VT8ZHEXYMX"
     };
 
     firebase.initializeApp(firebaseConfig);
@@ -145,7 +146,7 @@
       const ref = db.collection('queueShops').doc(currentShopId);
       unsubscribe = ref.onSnapshot(doc => {
         if (!doc.exists) {
-          ref.set({ name: '店舗', current: 0, max: 0, skips: [] });
+          ref.set({ name: '店舗', current: 0, max: 0, skips: [], userIds: {} });
           return;
         }
         const data = doc.data();
@@ -166,7 +167,7 @@
       const lineUserId = document.getElementById('lineUserId').value.trim();
 
       if (!lineUserId) {
-        showMsg(`📢 番号 ${ticketNumber} を呼び出しました（LINE ID未入力のため通知なし）`);
+        showMsg(`📢 番号 ${ticketNumber} 番を呼び出しました（LINE ID未連携のため通知なし）`);
         return;
       }
 
@@ -188,16 +189,21 @@
       }
     }
 
-    // 次のお客さんを呼び出す（呼び出し＋LINE通知）
+    // 次のお客さんを呼び出す（呼び出し＋自動LINE通知）
     function nextCustomer() {
       const ref = db.collection('queueShops').doc(currentShopId);
+      let targetUserId = null;
+
       db.runTransaction(transaction => {
         return transaction.get(ref).then(doc => {
           if (!doc.exists) return;
           const current = doc.data().current || 0;
           const max = doc.data().max || 0;
+          const userIds = doc.data().userIds || {};
+
           if (current < max) {
             const nextNum = current + 1;
+            targetUserId = userIds[nextNum] || null; // 発券された LINE User ID を取得
             transaction.update(ref, { current: nextNum });
             return nextNum;
           } else {
@@ -207,6 +213,11 @@
         });
       }).then(nextNum => {
         if (nextNum) {
+          if (targetUserId) {
+            document.getElementById('lineUserId').value = targetUserId;
+          } else {
+            document.getElementById('lineUserId').value = "";
+          }
           sendLineNotification(nextNum);
         }
       });
@@ -248,12 +259,11 @@
       });
     }
 
-    // QRコード表示用モーダルの開閉と生成 (LIFF URLに変更)
+    // QRコード表示用モーダルの開閉と生成 (LIFF URL)
     function openQRModal() {
       const select = document.getElementById('shopSelect');
       const shopName = select.options[select.selectedIndex].text;
       
-      // 💡 LIFF URL経由に変更
       const targetUrl = `https://liff.line.me/2011502822-9gjbFKnE?shop=${currentShopId}`;
 
       document.getElementById('modalShopName').innerText = `${shopName} 順番待ち受付`;
@@ -289,7 +299,7 @@
 
     function resetQueue() {
       if (confirm('本日のデータをリセット（0番に戻す）しますか？')) {
-        db.collection('queueShops').doc(currentShopId).set({ name: '店舗', current: 0, max: 0, skips: [] });
+        db.collection('queueShops').doc(currentShopId).set({ name: '店舗', current: 0, max: 0, skips: [], userIds: {} });
       }
     }
 
